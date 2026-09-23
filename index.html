@@ -222,12 +222,58 @@ button{cursor:pointer}
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 const modal=$('#modal'), toast=$('#toast');
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
-function openModal(title='Tambah Data Harga'){ $('#modalTitle').textContent=title;modal.classList.add('show') }
+function openModal(title='Tambah Data Harga'){ const m=$('#modal'); if(m) m.dataset.mode = title.startsWith('Detail') ? 'detail' : 'add'; $('#modalTitle').textContent=title;modal.classList.add('show') }
 function closeModal(){modal.classList.remove('show')}
-$('#addBtn').onclick=()=>openModal();
+$('#addBtn').onclick=()=>{ const m=$('#modal'); m.dataset.mode='add'; openModal('Tambah Data Harga'); };
 $('#closeModal').onclick=closeModal; $('#cancelModal').onclick=closeModal;
 modal.onclick=e=>{if(e.target===modal)closeModal()};
-$('#saveBtn').onclick=()=>{closeModal();showToast('Data harga berhasil disimpan.');};
+$('#saveBtn').onclick = async () => {
+  try {
+    const modal = document.querySelector('#modal');
+    const fields = modal.querySelectorAll('input, select, textarea');
+
+    // Ambil nilai dari form tambah data sesuai urutan field pada modal.
+    // Saat modal detail dibuka oleh API, handler ini akan diganti.
+    if (modal.dataset.mode === 'detail') return;
+
+    const values = [...fields].map(el => el.value);
+    const komoditas = values[0] || "KOM001";
+    const wilayah = values[1] || "WIL001";
+    const pasar = values[2] || "";
+    const tanggal = values[3] || new Date().toISOString().slice(0,10);
+    const hargaA = Number(values[4] || 0);
+    const hargaB = Number(values[5] || 0);
+    const satuan = values[6] || "kg";
+    const sumber = values[7] || "Survei Lapangan";
+
+    const sourceMap = {
+      "Survei Lapangan": "SRC001",
+      "Input Operator": "SRC002",
+      "Import Excel": "SRC003"
+    };
+
+    const result = await saveHargaToSheets({
+      tanggal: tanggal,
+      komoditas_id: komoditas,
+      wilayah_id: wilayah,
+      pasar_id: pasar,
+      sumber_id: sourceMap[sumber] || "SRC001",
+      harga: hargaA,
+      satuan: satuan,
+      volume_sample: 1,
+      petugas_id: "USR001",
+      status_data: "Valid",
+      catatan: hargaB ? "Harga pembanding: " + hargaB : ""
+    });
+
+    closeModal();
+    showToast("Data berhasil disimpan ke Google Sheets.");
+    await loadDashboardFromSheets();
+    await loadHargaFromSheets();
+  } catch (error) {
+    showToast("Gagal menyimpan: " + error.message);
+  }
+};
 
 $$('.detail').forEach(btn=>btn.onclick=()=>openModal('Detail Rekonsiliasi — '+btn.dataset.row));
 
@@ -267,5 +313,334 @@ $('#trendRange').onchange=e=>{
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
 </script>
+
+<script>
+/* =========================================================
+   KONEKSI GOOGLE APPS SCRIPT + GOOGLE SHEETS
+   =========================================================
+   Isi API_URL dengan URL Web App dari Apps Script.
+   Contoh: https://script.google.com/macros/s/XXXXXXXX/exec
+*/
+const APP_CONFIG = {
+  API_URL: "PASTE_YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE",
+  API_KEY: ""
+};
+
+const CURRENT_USER = "USR001";
+let MASTER = {KOMODITAS:[], WILAYAH:[], PASAR:[], SUMBER_DATA:[], USERS:[]};
+let LAST_REK_TOTAL = 0;
+
+function apiReady(){
+  return APP_CONFIG.API_URL && !APP_CONFIG.API_URL.includes("PASTE_YOUR");
+}
+
+function apiErrorMessage(err){
+  return err && err.message ? err.message : String(err || "Terjadi kesalahan.");
+}
+
+async function apiGet(action, params={}){
+  if(!apiReady()) throw new Error("URL Web App Apps Script belum diisi pada APP_CONFIG.API_URL.");
+  const url = new URL(APP_CONFIG.API_URL);
+  url.searchParams.set("action", action);
+  if(APP_CONFIG.API_KEY) url.searchParams.set("api_key", APP_CONFIG.API_KEY);
+  Object.entries(params).forEach(([k,v])=>{
+    if(v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
+  });
+  const res = await fetch(url.toString(), {method:"GET", redirect:"follow", cache:"no-store"});
+  const text = await res.text();
+  let result;
+  try { result = JSON.parse(text); }
+  catch(e){ throw new Error("Respons Apps Script bukan JSON. Pastikan deployment Web App sudah benar dan dapat diakses."); }
+  if(!result.success) throw new Error(result.error || "Request GET gagal.");
+  return result;
+}
+
+async function apiPost(payload){
+  if(!apiReady()) throw new Error("URL Web App Apps Script belum diisi pada APP_CONFIG.API_URL.");
+  const body = Object.assign({}, payload);
+  if(APP_CONFIG.API_KEY) body.api_key = APP_CONFIG.API_KEY;
+  const res = await fetch(APP_CONFIG.API_URL, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(body),
+    redirect:"follow"
+  });
+  const text = await res.text();
+  let result;
+  try { result = JSON.parse(text); }
+  catch(e){ throw new Error("Respons Apps Script bukan JSON. Pastikan Web App dapat diakses."); }
+  if(!result.success) throw new Error(result.error || "Request POST gagal.");
+  return result;
+}
+
+function safeName(map, id){
+  const x = (map||[]).find(r => String(r[Object.keys(r)[0]]) === String(id));
+  return x || null;
+}
+function masterFind(table, id){
+  const rows = MASTER[table] || [];
+  const key = table === "KOMODITAS" ? "id_komoditas" :
+              table === "WILAYAH" ? "id_wilayah" :
+              table === "PASAR" ? "id_pasar" :
+              table === "SUMBER_DATA" ? "id_sumber" : "id_user";
+  return rows.find(r => String(r[key]) === String(id));
+}
+function masterName(table, id){
+  const r = masterFind(table,id);
+  if(!r) return id || "-";
+  return r.nama_komoditas || r.nama_wilayah || r.nama_pasar || r.nama_sumber || r.nama || id;
+}
+
+async function loadMasterData(){
+  const result = await apiGet("master");
+  MASTER = result.data || MASTER;
+  populateMasterForm();
+  populateRegionFilter();
+  return MASTER;
+}
+
+function optionHtml(rows, idField, nameField, placeholder){
+  let html = `<option value="">${escapeHtml(placeholder)}</option>`;
+  (rows||[]).forEach(r=>{
+    html += `<option value="${escapeAttr(r[idField]||"")}">${escapeHtml(r[nameField] || r[idField] || "-")}</option>`;
+  });
+  return html;
+}
+
+function buildAddForm(){
+  const body = document.querySelector("#modal .modal-body");
+  if(!body) return;
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Komoditas</label><select id="fKomoditas" required></select></div>
+      <div class="field"><label>Wilayah</label><select id="fWilayah" required></select></div>
+      <div class="field"><label>Pasar</label><select id="fPasar" required></select></div>
+      <div class="field"><label>Tanggal</label><input id="fTanggal" type="date" required></div>
+      <div class="field"><label>Harga Sumber A</label><input id="fHargaA" type="number" min="0" step="1" placeholder="14000" required></div>
+      <div class="field"><label>Harga Sumber B</label><input id="fHargaB" type="number" min="0" step="1" placeholder="14500" required></div>
+      <div class="field"><label>Sumber Data A</label><select id="fSumberA" required></select></div>
+      <div class="field"><label>Sumber Data B</label><select id="fSumberB" required></select></div>
+      <div class="field"><label>Satuan</label><input id="fSatuan" value="kg" placeholder="kg" required></div>
+      <div class="field"><label>Harga Final</label><input id="fHargaFinal" type="number" min="0" step="1" placeholder="Otomatis = Sumber A"></div>
+      <div class="field fullw"><label>Catatan</label><textarea id="fCatatan" placeholder="Catatan rekonsiliasi..."></textarea></div>
+    </div>`;
+  populateMasterForm();
+  const today = new Date();
+  document.querySelector("#fTanggal").value = today.toISOString().slice(0,10);
+}
+
+function populateMasterForm(){
+  const kom = document.querySelector("#fKomoditas");
+  const wil = document.querySelector("#fWilayah");
+  const pas = document.querySelector("#fPasar");
+  const sa = document.querySelector("#fSumberA");
+  const sb = document.querySelector("#fSumberB");
+  if(kom) kom.innerHTML = optionHtml(MASTER.KOMODITAS,"id_komoditas","nama_komoditas","Pilih komoditas");
+  if(wil) wil.innerHTML = optionHtml(MASTER.WILAYAH,"id_wilayah","nama_wilayah","Pilih wilayah");
+  if(pas) pas.innerHTML = optionHtml(MASTER.PASAR,"id_pasar","nama_pasar","Pilih pasar");
+  if(sa) sa.innerHTML = optionHtml(MASTER.SUMBER_DATA,"id_sumber","nama_sumber","Pilih sumber A");
+  if(sb) sb.innerHTML = optionHtml(MASTER.SUMBER_DATA,"id_sumber","nama_sumber","Pilih sumber B");
+}
+
+function populateRegionFilter(){
+  const el = document.querySelector("#filterRegion");
+  if(!el) return;
+  const current = el.value;
+  const rows = MASTER.WILAYAH || [];
+  el.innerHTML = `<option value="">Semua Wilayah</option>` + rows.map(r=>`<option value="${escapeAttr(r.id_wilayah)}">${escapeHtml(r.nama_wilayah||r.id_wilayah)}</option>`).join("");
+  el.value = current;
+}
+
+async function saveNewData(){
+  const get = id => document.querySelector(id)?.value || "";
+  const komoditas = get("#fKomoditas"), wilayah=get("#fWilayah"), pasar=get("#fPasar");
+  const tanggal=get("#fTanggal"), hargaA=Number(get("#fHargaA")), hargaB=Number(get("#fHargaB"));
+  const sumberA=get("#fSumberA"), sumberB=get("#fSumberB"), satuan=get("#fSatuan");
+  const finalRaw=get("#fHargaFinal"), catatan=get("#fCatatan");
+  if(!komoditas||!wilayah||!pasar||!tanggal||!sumberA||!sumberB||!satuan) throw new Error("Lengkapi seluruh field wajib.");
+  if(!Number.isFinite(hargaA)||!Number.isFinite(hargaB)||hargaA<0||hargaB<0) throw new Error("Harga Sumber A/B harus berupa angka yang valid.");
+
+  // Simpan dua observasi harga ke HARGA, masing-masing untuk satu sumber.
+  await apiPost({action:"create",table:"HARGA",data:{tanggal,id_komoditas:komoditas,id_wilayah:wilayah,id_pasar:pasar,id_sumber:sumberA,harga:hargaA,satuan,status:"Aktif",keterangan:catatan,created_by:CURRENT_USER}});
+  await apiPost({action:"create",table:"HARGA",data:{tanggal,id_komoditas:komoditas,id_wilayah:wilayah,id_pasar:pasar,id_sumber:sumberB,harga:hargaB,satuan,status:"Aktif",keterangan:catatan,created_by:CURRENT_USER}});
+
+  // Jalankan rekonsiliasi otomatis; threshold dibaca dari sheet KOMODITAS oleh Code.gs.
+  await apiPost({action:"reconcile",data:{tanggal,id_komoditas:komoditas,id_wilayah:wilayah,id_pasar:pasar,id_sumber_a:sumberA,id_sumber_b:sumberB,harga_a:hargaA,harga_b:hargaB,harga_final:finalRaw===""?hargaA:Number(finalRaw),catatan,verified_by:""}});
+}
+
+async function loadDashboardFromSheets(){
+  const result = await apiGet("dashboard");
+  const d = result.data || {}, k = d.kpi || {};
+  // KPI pada desain lama: jumlah komoditas, wilayah, rekonsiliasi, belum, bermasalah.
+  setKpiNumber(0, (MASTER.KOMODITAS||[]).length);
+  setKpiNumber(1, (MASTER.WILAYAH||[]).length);
+  setKpiNumber(2, k.total_rekonsiliasi || 0);
+  setKpiNumber(3, Math.max((k.total_rekonsiliasi||0)-(k.terverifikasi||0),0));
+  setKpiNumber(4, k.anomali || 0);
+  renderReconciliationStatus(d.status || {});
+  renderAnomalySummary(k.anomali_open || 0);
+}
+
+function renderReconciliationStatus(status){
+  const list=document.querySelector(".status-list");
+  const donut=document.querySelector(".donut");
+  const center=document.querySelector(".donut-center b");
+  if(!list) return;
+  const names=["Disetujui","Diverifikasi","Belum Dicek","Anomali","Ditolak"];
+  const colors={"Disetujui":"#16a673","Diverifikasi":"#1769e0","Belum Dicek":"#f3a51b","Anomali":"#e55353","Ditolak":"#8c5a65"};
+  const vals=names.map(n=>Number(status[n]||0));
+  const total=vals.reduce((a,b)=>a+b,0);
+  if(center) center.textContent=total.toLocaleString("id-ID");
+  let cursor=0, stops=[];
+  names.forEach((n,i)=>{ const pct=total?vals[i]/total*100:0; stops.push(`${colors[n]} ${cursor}% ${cursor+pct}%`); cursor+=pct; });
+  if(donut) donut.style.background=`conic-gradient(${stops.join(",")})`;
+  list.innerHTML=names.map(n=>{
+    const v=Number(status[n]||0), pct=total?Math.round(v/total*100):0;
+    return `<div><span style="background:${colors[n]}"></span>${escapeHtml(n)}<br><b>${v.toLocaleString("id-ID")} (${pct}%)</b></div>`;
+  }).join("");
+}
+
+function renderAnomalySummary(openCount){
+  const box=document.querySelector("#anomali");
+  if(!box) return;
+  const first=box.querySelectorAll(".alert")[0];
+  if(first){ const b=first.querySelector("b"); if(b) b.textContent=Number(openCount||0).toLocaleString("id-ID"); }
+}
+
+async function loadHargaFromSheets(params={}){
+  const result=await apiGet("list",Object.assign({table:"REKONSILIASI",limit:100},params));
+  const payload=result.data||{};
+  LAST_REK_TOTAL=Number(payload.total||0);
+  renderReconciliationTable(payload.rows||[]);
+  return result;
+}
+
+function renderReconciliationTable(rows){
+  const tbody=document.querySelector("#priceTable tbody");
+  const info=document.querySelector("#rowInfo");
+  if(!tbody) return;
+  tbody.innerHTML="";
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:25px;color:#718096">Tidak ada data rekonsiliasi.</td></tr>`; if(info) info.textContent="Tidak ada data"; return; }
+  rows.forEach((r,i)=>{
+    const status=r.status_rekonsiliasi||"Belum Dicek";
+    const kom=masterName("KOMODITAS",r.id_komoditas), wil=masterName("WILAYAH",r.id_wilayah), pas=masterName("PASAR",r.id_pasar);
+    const sa=masterName("SUMBER_DATA",r.id_sumber_a), sb=masterName("SUMBER_DATA",r.id_sumber_b);
+    tbody.insertAdjacentHTML("beforeend",`<tr>
+      <td>${i+1}</td><td>${escapeHtml(kom)}</td><td>${escapeHtml(wil)}</td><td>${escapeHtml(pas)}</td>
+      <td>${escapeHtml(sa)}<br>${formatRupiah(r.harga_a)}</td><td>${escapeHtml(sb)}<br>${formatRupiah(r.harga_b)}</td>
+      <td class="${Number(r.selisih_nominal)<0?"down":""}">${formatRupiah(r.selisih_nominal)}</td>
+      <td class="${Number(r.selisih_persen)<0?"down":""}">${formatNumber(r.selisih_persen)}%</td>
+      <td><span class="status ${statusClass(status)}">${escapeHtml(status)}</span></td>
+      <td><button class="detail" data-row="${escapeAttr(r.id_rekonsiliasi)}">Detail</button></td>
+    </tr>`);
+  });
+  if(info) info.textContent=`Menampilkan ${rows.length} dari ${LAST_REK_TOTAL.toLocaleString("id-ID")} data`;
+  tbody.querySelectorAll(".detail").forEach(btn=>btn.onclick=async()=>{
+    try{ const result=await apiGet("get",{table:"REKONSILIASI",id:btn.dataset.row}); openApiDetailModal(result.data); }
+    catch(e){showToast(apiErrorMessage(e));}
+  });
+}
+
+function statusClass(status){return ({"Disetujui":"approved","Diverifikasi":"verified","Belum Dicek":"unchecked","Anomali":"anomaly","Ditolak":"rejected"})[status]||"unchecked";}
+function formatRupiah(v){return "Rp "+Number(v||0).toLocaleString("id-ID");}
+function formatNumber(v){return Number(v||0).toLocaleString("id-ID",{maximumFractionDigits:2});}
+function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
+function escapeAttr(v){return escapeHtml(v).replaceAll("`","&#096;");}
+function setKpiNumber(index,value){const cards=document.querySelectorAll(".kpi .num");if(cards[index])cards[index].textContent=Number(value||0).toLocaleString("id-ID");}
+
+function openApiDetailModal(data){
+  const modal=document.querySelector("#modal");
+  if(!modal||!data) return;
+  modal.dataset.mode="detail";
+  document.querySelector("#modalTitle").textContent="Detail Rekonsiliasi — "+(data.id_rekonsiliasi||"");
+  const body=document.querySelector("#modal .modal-body");
+  body.innerHTML=`<div class="form-grid">
+    <div class="field"><label>ID Rekonsiliasi</label><input value="${escapeAttr(data.id_rekonsiliasi||"")}" disabled></div>
+    <div class="field"><label>Tanggal</label><input value="${escapeAttr(data.tanggal||"")}" disabled></div>
+    <div class="field"><label>Komoditas</label><input value="${escapeAttr(masterName("KOMODITAS",data.id_komoditas))}" disabled></div>
+    <div class="field"><label>Wilayah</label><input value="${escapeAttr(masterName("WILAYAH",data.id_wilayah))}" disabled></div>
+    <div class="field"><label>Pasar</label><input value="${escapeAttr(masterName("PASAR",data.id_pasar))}" disabled></div>
+    <div class="field"><label>Selisih</label><input value="${escapeAttr(formatRupiah(data.selisih_nominal)+" / "+formatNumber(data.selisih_persen)+"%")}" disabled></div>
+    <div class="field"><label>Status</label><select id="apiStatus">${["Belum Dicek","Diverifikasi","Disetujui","Anomali","Ditolak"].map(s=>`<option value="${s}" ${s===data.status_rekonsiliasi?"selected":""}>${s}</option>`).join("")}</select></div>
+    <div class="field"><label>Harga Final</label><input id="apiFinal" type="number" value="${escapeAttr(data.harga_final??"")}"></div>
+    <div class="field fullw"><label>Catatan</label><textarea id="apiNote">${escapeHtml(data.catatan||"")}</textarea></div>
+  </div>`;
+  const save=document.querySelector("#saveBtn");
+  save.textContent="Simpan Verifikasi";
+  save.onclick=async()=>{
+    try{
+      save.disabled=true;
+      await apiPost({action:"verify",id:data.id_rekonsiliasi,status:document.querySelector("#apiStatus").value,catatan:document.querySelector("#apiNote").value,verified_by:CURRENT_USER});
+      const finalVal=document.querySelector("#apiFinal").value;
+      if(finalVal!=="") await apiPost({action:"update",table:"REKONSILIASI",id:data.id_rekonsiliasi,data:{harga_final:Number(finalVal),catatan:document.querySelector("#apiNote").value}});
+      closeModal(); showToast("Verifikasi berhasil disimpan."); await refreshAll();
+    }catch(e){showToast(apiErrorMessage(e));}finally{save.disabled=false;save.textContent="Simpan Verifikasi";}
+  };
+  document.querySelector("#modal").classList.add("show");
+}
+
+async function refreshAll(){
+  await loadMasterData();
+  await loadDashboardFromSheets();
+  await loadHargaFromSheets();
+}
+
+// Override handler UI lama agar seluruh form benar-benar menggunakan schema Code.gs.
+(function wireConnectedUI(){
+  const add=document.querySelector("#addBtn");
+  if(add) add.onclick=async()=>{
+    try{
+      const modal=document.querySelector("#modal");
+      modal.dataset.mode="add";
+      document.querySelector("#modalTitle").textContent="Tambah Data Rekonsiliasi Harga";
+      buildAddForm();
+      const save=document.querySelector("#saveBtn");
+      save.textContent="Simpan & Rekonsiliasi";
+      save.onclick=async()=>{
+        try{save.disabled=true;await saveNewData();closeModal();showToast("Data harga dan rekonsiliasi berhasil disimpan.");await refreshAll();}
+        catch(e){showToast("Gagal menyimpan: "+apiErrorMessage(e));}
+        finally{save.disabled=false;save.textContent="Simpan & Rekonsiliasi";}
+      };
+      document.querySelector("#modal").classList.add("show");
+    }catch(e){showToast(apiErrorMessage(e));}
+  };
+
+  const reset=document.querySelector("#resetBtn");
+  if(reset) reset.onclick=()=>{document.querySelector("#search").value="";document.querySelector("#filterStatus").value="";document.querySelector("#filterRegion").value="";applyTableFilter();};
+  const apply=document.querySelector("#applyBtn");
+  if(apply) apply.onclick=applyTableFilter;
+  ["#search","#filterStatus","#filterRegion"].forEach(sel=>{const el=document.querySelector(sel);if(el)el.addEventListener("input",applyTableFilter);el?.addEventListener("change",applyTableFilter);});
+})();
+
+function applyTableFilter(){
+  const q=(document.querySelector("#search")?.value||"").toLowerCase();
+  const st=document.querySelector("#filterStatus")?.value||"";
+  const rg=document.querySelector("#filterRegion")?.value||"";
+  let visible=0;
+  document.querySelectorAll("#priceTable tbody tr").forEach(tr=>{
+    if(!tr.cells.length) return;
+    const text=tr.textContent.toLowerCase(), status=tr.querySelector(".status")?.textContent.trim()||"", region=tr.cells[2]?.textContent.trim()||"";
+    const ok=(!q||text.includes(q))&&(!st||status===st)&&(!rg||region===rg);
+    tr.style.display=ok?"":"none"; if(ok)visible++;
+  });
+  const info=document.querySelector("#rowInfo"); if(info) info.textContent=`Menampilkan ${visible} data hasil filter`;
+}
+
+window.addEventListener("load",async()=>{
+  if(!apiReady()){
+    showToast("Isi APP_CONFIG.API_URL dengan URL Web App Apps Script terlebih dahulu.");
+    return;
+  }
+  try{
+    await apiGet("health");
+    await refreshAll();
+    showToast("Terhubung ke Google Sheets.");
+  }catch(e){
+    console.error(e);
+    showToast("Koneksi gagal: "+apiErrorMessage(e));
+  }
+});
+</script>
+
 </body>
 </html>

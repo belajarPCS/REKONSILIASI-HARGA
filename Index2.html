@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rekonsiliasi Statistik Harga</title>
+<style>
+:root{
+  --navy:#102d4f;--navy2:#0b2340;--blue:#1769e0;--blue2:#0d5bd7;
+  --bg:#f5f8fc;--card:#fff;--text:#172b4d;--muted:#718096;--line:#e4ebf3;
+  --green:#16a673;--orange:#f3a51b;--red:#e55353;--purple:#7656d6;
+  --shadow:0 4px 18px rgba(21,45,75,.07);--radius:12px
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{display:flex;min-height:100vh}
+.sidebar{width:238px;background:linear-gradient(180deg,var(--navy),#0c2848);color:#fff;position:fixed;inset:0 auto 0 0;z-index:30;display:flex;flex-direction:column}
+.brand{padding:21px 18px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;gap:12px;align-items:center}
+.brand-logo{width:36px;height:36px;border-radius:9px;background:#1672ef;display:grid;place-items:center;font-size:19px;box-shadow:0 5px 15px rgba(0,0,0,.18)}
+.brand strong{font-size:15px;line-height:1.2}.brand small{display:block;opacity:.65;margin-top:4px}
+.nav{padding:15px 9px;flex:1;overflow:auto}
+.nav-group{margin:8px 0 4px;padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#7590ae}
+.nav-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:8px;color:#dbe7f4;text-decoration:none;margin:2px 0;font-size:13px}
+.nav-item:hover,.nav-item.active{background:#1672ef;color:#fff}
+.nav-icon{width:19px;text-align:center;font-size:15px}
+.sidebar-foot{padding:15px 17px;border-top:1px solid rgba(255,255,255,.1);font-size:10px;color:#89a1bb;line-height:1.7}
+.main{margin-left:238px;width:calc(100% - 238px);min-width:0}
+.topbar{height:62px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 25px;position:sticky;top:0;z-index:20}
+.menu-btn{border:0;background:transparent;font-size:23px;color:var(--navy)}
+.top-actions{display:flex;align-items:center;gap:17px}.bell{position:relative;font-size:20px}.badge{position:absolute;top:-6px;right:-7px;background:var(--red);color:#fff;border-radius:10px;font-size:9px;padding:2px 5px}
+.profile{display:flex;align-items:center;gap:9px;border-left:1px solid var(--line);padding-left:17px}
+.avatar{width:34px;height:34px;border-radius:50%;background:#dcecff;display:grid;place-items:center;color:#2367b8;font-weight:700}
+.profile b{font-size:12px}.profile span{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+.content{padding:25px;max-width:1700px;margin:auto}
+.heading{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:19px}
+.heading h1{font-size:21px;margin:0 0 5px}.heading p{margin:0;color:var(--muted);font-size:12px}
+.period{background:#fff;border:1px solid var(--line);padding:11px 14px;border-radius:8px;min-width:215px;font-size:11px}
+.period b{display:block;font-size:12px;margin-top:4px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:15px;box-shadow:var(--shadow)}
+.kpi-top{display:flex;justify-content:space-between;align-items:center}.kpi-icon{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:18px}
+.kpi h3{font-size:10px;color:var(--muted);margin:13px 0 5px}.kpi .num{font-size:25px;font-weight:750}.delta{font-size:10px;margin-top:6px}.up{color:var(--green)}.warn{color:var(--orange)}.down{color:var(--red)}
+.grid-main{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,.9fr) minmax(230px,1fr);gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:15px}
+.card-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card-title h2{font-size:13px;margin:0}.card-title select,.mini-select{border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:10px;background:#fff}
+.chart{width:100%;height:245px}.legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;font-size:10px;color:#61728a;margin-top:4px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.donut-wrap{display:flex;align-items:center;justify-content:center;gap:16px;height:245px}.donut{width:150px;height:150px;border-radius:50%;background:conic-gradient(#16a673 0 70%,#1769e0 70% 84%,#f3a51b 84% 95%,#e55353 95% 100%);position:relative}.donut:after{content:"";position:absolute;inset:35px;background:#fff;border-radius:50%}.donut-center{position:absolute;z-index:2;inset:0;display:grid;place-content:center;text-align:center}.donut-center b{font-size:20px}.donut-center span{font-size:9px;color:var(--muted)}.status-list{font-size:10px;line-height:2.25}.status-list span{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+.rank{height:245px}.rank-row{display:grid;grid-template-columns:85px 1fr 25px;align-items:center;gap:7px;font-size:10px;margin:15px 0}.bar{height:8px;background:#edf2f7;border-radius:10px;overflow:hidden}.bar i{display:block;height:100%;border-radius:10px}
+.full{grid-column:1/3}.side-stack{display:flex;flex-direction:column;gap:14px}.side-stack .card{flex:1}
+.table-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.input,.select{height:34px;border:1px solid var(--line);border-radius:6px;padding:0 10px;background:#fff;color:var(--text);font-size:10px}.search{flex:1;min-width:180px}.btn{height:34px;border-radius:6px;padding:0 13px;border:1px solid var(--line);background:#fff;font-size:10px}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.green{background:#10a66f;border-color:#10a66f;color:#fff}.btn.red{background:#e55353;border-color:#e55353;color:#fff}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:7px}table{width:100%;border-collapse:collapse;min-width:850px}th{background:#f2f6fb;color:#53677f;font-size:9px;text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}td{font-size:10px;padding:10px 8px;border-bottom:1px solid #edf1f5;white-space:nowrap}tr:hover td{background:#fafcff}.status{padding:4px 8px;border-radius:12px;font-size:9px}.approved{background:#ddf7eb;color:#0b9564}.verified{background:#e1efff;color:#1769e0}.unchecked{background:#fff0cc;color:#a96c00}.anomaly{background:#ffe1e1;color:#cf3f3f}.rejected{background:#f4dfe0;color:#a73b43}.detail{border:1px solid #9cc4ff;color:#1769e0;background:#fff;border-radius:5px;padding:5px 8px;font-size:9px}
+.pagination{display:flex;justify-content:space-between;align-items:center;margin-top:12px;color:var(--muted);font-size:10px}.pages{display:flex;gap:4px}.page{border:1px solid var(--line);background:#fff;border-radius:5px;width:27px;height:25px;font-size:10px}.page.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.alert{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #edf1f5;font-size:10px}.alert:last-child{border:0}.alert-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.heatmap{display:grid;grid-template-columns:35px repeat(5,1fr);gap:3px;font-size:8px;text-align:center}.heatmap div{padding:7px 2px;border-radius:3px}.h1{background:#d9f0e7}.h2{background:#b9dfbf}.h3{background:#e5dc7d}.h4{background:#f0ae75}.h5{background:#e45c65;color:#fff}
+.quick a{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #edf1f5;color:#36516e;text-decoration:none;font-size:10px}.quick a:last-child{border:0}
+.export{display:flex;gap:7px;margin-top:10px}.export .btn{flex:1}
+.overlay{position:fixed;inset:0;background:rgba(9,28,50,.45);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}.overlay.show{display:flex}.modal{background:#fff;border-radius:12px;width:min(620px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}.modal-head{padding:17px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.modal-head h3{margin:0;font-size:14px}.close{border:0;background:transparent;font-size:20px}.modal-body{padding:20px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:10px;color:var(--muted);margin-bottom:5px}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:9px;font-size:11px}.field textarea{min-height:75px;resize:vertical}.field.fullw{grid-column:1/-1}.modal-foot{padding:13px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.toast{position:fixed;right:22px;bottom:22px;background:#17395f;color:#fff;padding:12px 16px;border-radius:8px;font-size:11px;box-shadow:0 10px 30px rgba(0,0,0,.2);transform:translateY(100px);opacity:0;transition:.25s;z-index:200}.toast.show{transform:none;opacity:1}
+@media(max-width:1200px){.kpis{grid-template-columns:repeat(3,1fr)}.grid-main{grid-template-columns:1fr 1fr}.full{grid-column:1/-1}.side-stack{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}}
+@media(max-width:800px){.sidebar{width:65px}.brand{justify-content:center;padding:15px 8px}.brand>div:not(.brand-logo),.nav-item span:not(.nav-icon),.nav-group,.sidebar-foot{display:none}.nav-item{justify-content:center}.main{margin-left:65px;width:calc(100% - 65px)}.content{padding:15px}.topbar{padding:0 15px}.profile div{display:none}.heading{display:block}.period{margin-top:12px}.kpis{grid-template-columns:1fr 1fr}.grid-main{grid-template-columns:1fr}.full{grid-column:auto}.side-stack{grid-column:auto;display:flex}.form-grid{grid-template-columns:1fr}}
+@media(max-width:500px){.kpis{grid-template-columns:1fr}.top-actions{gap:8px}.profile{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-logo">↗</div>
+    <div><strong>Rekonsiliasi<br>Statistik Harga</strong><small>Dashboard v1.0</small></div>
+  </div>
+  <nav class="nav">
+    <div class="nav-group">Menu Utama</div>
+    <a class="nav-item active" href="#" data-page="Dashboard"><span class="nav-icon">⌂</span><span>Dashboard</span></a>
+    <a class="nav-item" href="#data"><span class="nav-icon">▣</span><span>Data Harga</span></a>
+    <a class="nav-item" href="#rekonsiliasi"><span class="nav-icon">◈</span><span>Rekonsiliasi</span></a>
+    <a class="nav-item" href="#verifikasi"><span class="nav-icon">✓</span><span>Verifikasi</span></a>
+    <a class="nav-item" href="#anomali"><span class="nav-icon">!</span><span>Deteksi Anomali</span></a>
+    <a class="nav-item" href="#statistik"><span class="nav-icon">▥</span><span>Statistik</span></a>
+    <a class="nav-item" href="#laporan"><span class="nav-icon">▤</span><span>Laporan</span></a>
+    <div class="nav-group">Administrasi</div>
+    <a class="nav-item" href="#master"><span class="nav-icon">▦</span><span>Master Data</span></a>
+    <a class="nav-item" href="#pengguna"><span class="nav-icon">♙</span><span>Pengguna</span></a>
+    <a class="nav-item" href="#audit"><span class="nav-icon">◷</span><span>Audit Trail</span></a>
+  </nav>
+  <div class="sidebar-foot">Versi 1.0.0<br>© 2026 Rekonsiliasi Statistik Harga</div>
+</aside>
+
+<main class="main">
+<header class="topbar">
+  <button class="menu-btn" id="menuBtn">☰</button>
+  <div class="top-actions">
+    <span class="bell">♧<i class="badge">3</i></span>
+    <div class="profile"><div class="avatar">MR</div><div><b>Muhammad Riduan</b><span>Administrator</span></div><span>⌄</span></div>
+  </div>
+</header>
+
+<section class="content">
+  <div class="heading">
+    <div><h1>Selamat datang, Muhammad Riduan</h1><p>Berikut adalah ringkasan rekonsiliasi statistik harga hari ini.</p></div>
+    <div class="period">▣ &nbsp; Periode<strong>01 Apr 2026 - 30 Apr 2026</strong></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-top"><span class="kpi-icon" style="background:#e4efff">▤</span></div><h3>Total Komoditas</h3><div class="num">1.245</div><div class="delta up">↗ +12 dari periode sebelumnya</div></div>
+    <div class="kpi"><div class="kpi-top"><span class="kpi-icon" style="background:#e0f6eb">▥</span></div><h3>Total Wilayah</h3><div class="num">872</div><div class="delta up">↗ +5 dari periode sebelumnya</div></div>
+    <div class="kpi"><div class="kpi-top"><span class="kpi-icon" style="background:#eee8ff">✓</span></div><h3>Data Direkonsiliasi</h3><div class="num">1.034</div><div class="delta up">83,1% dari total data</div></div>
+    <div class="kpi"><div class="kpi-top"><span class="kpi-icon" style="background:#fff2d7">◷</span></div><h3>Belum Direkonsiliasi</h3><div class="num">142</div><div class="delta warn">11,4% dari total data</div></div>
+    <div class="kpi"><div class="kpi-top"><span class="kpi-icon" style="background:#ffe5e5">!</span></div><h3>Data Bermasalah</h3><div class="num">69</div><div class="delta down">5,5% dari total data</div></div>
+  </div>
+
+  <div class="grid-main">
+    <div class="card">
+      <div class="card-title"><h2>Tren Harga Rata-rata Komoditas</h2><select id="trendRange"><option>7 Hari Terakhir</option><option>30 Hari</option><option>3 Bulan</option></select></div>
+      <svg class="chart" viewBox="0 0 700 245" preserveAspectRatio="none" id="trendChart">
+        <g stroke="#e7edf4" stroke-width="1">
+          <line x1="45" y1="25" x2="680" y2="25"/><line x1="45" y1="72" x2="680" y2="72"/><line x1="45" y1="119" x2="680" y2="119"/><line x1="45" y1="166" x2="680" y2="166"/><line x1="45" y1="213" x2="680" y2="213"/>
+          <line x1="45" y1="25" x2="45" y2="213"/>
+        </g>
+        <g fill="#718096" font-size="9"><text x="7" y="29">40.000</text><text x="7" y="76">30.000</text><text x="7" y="123">20.000</text><text x="7" y="170">10.000</text><text x="25" y="217">0</text>
+        <text x="48" y="232">Apr 1</text><text x="142" y="232">Apr 5</text><text x="240" y="232">Apr 10</text><text x="338" y="232">Apr 15</text><text x="436" y="232">Apr 20</text><text x="534" y="232">Apr 25</text><text x="640" y="232">Apr 30</text></g>
+        <polyline fill="none" stroke="#1769e0" stroke-width="3" points="45,170 75,169 105,171 135,167 165,168 195,166 225,168 255,166 285,167 315,164 345,166 375,164 405,165 435,163 465,162 495,164 525,161 555,160 585,162 615,160 645,159 680,158"/>
+        <polyline fill="none" stroke="#e55353" stroke-width="3" points="45,95 75,91 105,88 135,91 165,86 195,88 225,84 255,90 285,87 315,94 345,100 375,105 405,87 435,78 465,83 495,82 525,73 555,78 585,75 615,81 645,78 680,79"/>
+        <polyline fill="none" stroke="#f3b323" stroke-width="3" points="45,147 75,141 105,145 135,139 165,142 195,137 225,145 255,136 285,131 315,137 345,129 375,127 405,126 435,120 465,118 495,121 525,113 555,120 585,117 615,123 645,116 680,120"/>
+        <polyline fill="none" stroke="#16a673" stroke-width="3" points="45,155 75,151 105,154 135,148 165,151 195,145 225,149 255,142 285,145 315,139 345,142 375,136 405,138 435,130 465,133 495,128 525,131 555,126 585,130 615,124 645,127 680,120"/>
+      </svg>
+      <div class="legend"><span><i class="dot" style="background:#1769e0"></i>Beras</span><span><i class="dot" style="background:#e55353"></i>Cabai Merah</span><span><i class="dot" style="background:#f3b323"></i>Minyak Goreng</span><span><i class="dot" style="background:#16a673"></i>Telur Ayam</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h2>Status Rekonsiliasi</h2></div>
+      <div class="donut-wrap"><div class="donut"><div class="donut-center"><b>1.245</b><span>Total Data</span></div></div>
+      <div class="status-list"><div><span style="background:#16a673"></span>Disetujui<br><b>70% (872)</b></div><div><span style="background:#1769e0"></span>Diverifikasi<br><b>14% (174)</b></div><div><span style="background:#f3a51b"></span>Belum Dicek<br><b>11% (142)</b></div><div><span style="background:#e55353"></span>Ditolak<br><b>5% (57)</b></div></div></div>
+    </div>
+
+    <div class="card rank">
+      <div class="card-title"><h2>Komoditas dengan Anomali Terbanyak</h2><a href="#anomali" style="font-size:9px;color:#1769e0">Lihat Semua →</a></div>
+      <div class="rank-row"><span>Cabai Merah</span><div class="bar"><i style="width:90%;background:#e55353"></i></div><b>18</b></div>
+      <div class="rank-row"><span>Bawang Merah</span><div class="bar"><i style="width:65%;background:#f3a51b"></i></div><b>12</b></div>
+      <div class="rank-row"><span>Minyak Goreng</span><div class="bar"><i style="width:55%;background:#f3b323"></i></div><b>10</b></div>
+      <div class="rank-row"><span>Telur Ayam</span><div class="bar"><i style="width:45%;background:#16a673"></i></div><b>8</b></div>
+      <div class="rank-row"><span>Beras</span><div class="bar"><i style="width:34%;background:#1769e0"></i></div><b>6</b></div>
+    </div>
+
+    <div class="card full" id="rekonsiliasi">
+      <div class="card-title"><h2>Data Rekonsiliasi Harga</h2><button class="btn primary" id="addBtn">＋ Tambah Data</button></div>
+      <div class="table-tools">
+        <input class="input search" id="search" placeholder="Cari komoditas, wilayah, atau pasar...">
+        <select class="select" id="filterStatus"><option value="">Semua Status</option><option>Disetujui</option><option>Diverifikasi</option><option>Belum Dicek</option><option>Anomali</option><option>Ditolak</option></select>
+        <select class="select" id="filterRegion"><option value="">Semua Wilayah</option><option>DKI Jakarta</option><option>Jawa Barat</option><option>Jawa Tengah</option><option>Jawa Timur</option><option>Sumatera Utara</option><option>Banten</option><option>Riau</option><option>Papua</option></select>
+        <button class="btn" id="resetBtn">Reset</button><button class="btn primary" id="applyBtn">Terapkan</button>
+      </div>
+      <div class="table-wrap">
+      <table id="priceTable"><thead><tr><th>No</th><th>Komoditas</th><th>Wilayah</th><th>Pasar</th><th>Sumber A<br>(Harga)</th><th>Sumber B<br>(Harga)</th><th>Selisih<br>(Nominal)</th><th>Selisih<br>(%)</th><th>Status</th><th>Aksi</th></tr></thead>
+      <tbody>
+      <tr><td>1</td><td>Beras Premium</td><td>DKI Jakarta</td><td>Pasar Induk</td><td>Rp 14.000</td><td>Rp 14.500</td><td class="down">-Rp 500</td><td class="down">-3,6%</td><td><span class="status approved">Disetujui</span></td><td><button class="detail" data-row="Beras Premium">Detail</button></td></tr>
+      <tr><td>2</td><td>Cabai Merah</td><td>Jawa Barat</td><td>Pasar Cibitung</td><td>Rp 45.000</td><td>Rp 52.000</td><td class="down">-Rp 7.000</td><td class="down">-15,6%</td><td><span class="status verified">Diverifikasi</span></td><td><button class="detail" data-row="Cabai Merah">Detail</button></td></tr>
+      <tr><td>3</td><td>Minyak Goreng</td><td>Jawa Tengah</td><td>Pasar Johar</td><td>Rp 18.500</td><td>Rp 18.000</td><td>Rp 500</td><td>2,7%</td><td><span class="status unchecked">Belum Dicek</span></td><td><button class="detail" data-row="Minyak Goreng">Detail</button></td></tr>
+      <tr><td>4</td><td>Telur Ayam</td><td>Jawa Timur</td><td>Pasar Legi</td><td>Rp 26.000</td><td>Rp 27.500</td><td class="down">-Rp 1.500</td><td class="down">-5,8%</td><td><span class="status anomaly">Anomali</span></td><td><button class="detail" data-row="Telur Ayam">Detail</button></td></tr>
+      <tr><td>5</td><td>Bawang Merah</td><td>Sumatera Utara</td><td>Pasar Perninggan</td><td>Rp 32.000</td><td>Rp 28.000</td><td>Rp 4.000</td><td>12,5%</td><td><span class="status rejected">Ditolak</span></td><td><button class="detail" data-row="Bawang Merah">Detail</button></td></tr>
+      <tr><td>6</td><td>Cabai Rawit</td><td>Banten</td><td>Pasar Serang</td><td>Rp 38.000</td><td>Rp 36.000</td><td>Rp 2.000</td><td>5,6%</td><td><span class="status verified">Diverifikasi</span></td><td><button class="detail" data-row="Cabai Rawit">Detail</button></td></tr>
+      <tr><td>7</td><td>Gula Pasir</td><td>Riau</td><td>Pasar Sail</td><td>Rp 16.000</td><td>Rp 16.500</td><td class="down">-Rp 500</td><td class="down">-3,0%</td><td><span class="status approved">Disetujui</span></td><td><button class="detail" data-row="Gula Pasir">Detail</button></td></tr>
+      <tr><td>8</td><td>Tepung Terigu</td><td>Kalimantan Barat</td><td>Pasar Baru</td><td>Rp 12.000</td><td>Rp 12.000</td><td>Rp 0</td><td>0,0%</td><td><span class="status approved">Disetujui</span></td><td><button class="detail" data-row="Tepung Terigu">Detail</button></td></tr>
+      <tr><td>9</td><td>Daging Ayam</td><td>Sulawesi Selatan</td><td>Pasar Terong</td><td>Rp 34.000</td><td>Rp 35.500</td><td class="down">-Rp 1.500</td><td class="down">-4,4%</td><td><span class="status verified">Diverifikasi</span></td><td><button class="detail" data-row="Daging Ayam">Detail</button></td></tr>
+      <tr><td>10</td><td>Gula Pasir</td><td>Papua</td><td>Pasar Sentani</td><td>Rp 17.000</td><td>Rp 18.000</td><td class="down">-Rp 1.000</td><td class="down">-5,6%</td><td><span class="status unchecked">Belum Dicek</span></td><td><button class="detail" data-row="Gula Pasir">Detail</button></td></tr>
+      </tbody></table></div>
+      <div class="pagination"><span id="rowInfo">Menampilkan 1–10 dari 100 data</span><div class="pages"><button class="page active">1</button><button class="page">2</button><button class="page">3</button><button class="page">4</button><button class="page">5</button><button class="page">…</button><button class="page">10</button><button class="page">›</button></div></div>
+    </div>
+
+    <div class="side-stack">
+      <div class="card" id="anomali"><div class="card-title"><h2>Deteksi Anomali</h2><a href="#" style="font-size:9px;color:#1769e0">Lihat Semua →</a></div>
+        <div class="alert"><i class="alert-dot" style="background:#e55353"></i>Harga terlalu tinggi/rendah <b style="margin-left:auto">18</b></div>
+        <div class="alert"><i class="alert-dot" style="background:#7bbf52"></i>Perubahan ekstrem <b style="margin-left:auto">12</b></div>
+        <div class="alert"><i class="alert-dot" style="background:#16a673"></i>Data duplikat <b style="margin-left:auto">8</b></div>
+        <div class="alert"><i class="alert-dot" style="background:#1769e0"></i>Data kosong <b style="margin-left:auto">6</b></div>
+        <div class="alert"><i class="alert-dot" style="background:#f07e39"></i>Satuan tidak sesuai <b style="margin-left:auto">5</b></div>
+        <div class="alert"><i class="alert-dot" style="background:#f3b323"></i>Di luar threshold <b style="margin-left:auto">4</b></div>
+      </div>
+      <div class="card"><div class="card-title"><h2>Heatmap Harga</h2><select class="mini-select"><option>Beras</option><option>Cabai Merah</option></select></div>
+        <div class="heatmap">
+          <div></div><div>Sumut</div><div>Jabar</div><div>Jateng</div><div>Jatim</div><div>Sulsel</div>
+          <div>Jan</div><div class="h2"></div><div class="h3"></div><div class="h1"></div><div class="h4"></div><div class="h2"></div>
+          <div>Feb</div><div class="h3"></div><div class="h2"></div><div class="h4"></div><div class="h5"></div><div class="h2"></div>
+          <div>Mar</div><div class="h1"></div><div class="h4"></div><div class="h3"></div><div class="h2"></div><div class="h5"></div>
+          <div>Apr</div><div class="h2"></div><div class="h1"></div><div class="h2"></div><div class="h4"></div><div class="h3"></div>
+        </div>
+      </div>
+      <div class="card" id="laporan"><div class="card-title"><h2>Laporan Cepat</h2></div>
+        <div class="quick"><a href="#"><span>▧ &nbsp; Laporan Rekonsiliasi Harga</span><span>›</span></a><a href="#"><span>▧ &nbsp; Laporan Perubahan Harga</span><span>›</span></a><a href="#"><span>▧ &nbsp; Laporan Anomali</span><span>›</span></a><a href="#"><span>▧ &nbsp; Laporan Per Wilayah</span><span>›</span></a></div>
+        <div class="export"><button class="btn green" id="excelBtn">▣ Export Excel</button><button class="btn red" id="pdfBtn">▤ Export PDF</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+
+<div class="overlay" id="modal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modalTitle">Tambah Data Harga</h3><button class="close" id="closeModal">×</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Komoditas</label><select><option>Beras Premium</option><option>Cabai Merah</option><option>Minyak Goreng</option><option>Telur Ayam</option><option>Bawang Merah</option><option>Gula Pasir</option></select></div>
+        <div class="field"><label>Wilayah</label><select><option>DKI Jakarta</option><option>Jawa Barat</option><option>Jawa Tengah</option><option>Jawa Timur</option><option>Sumatera Utara</option><option>Banten</option></select></div>
+        <div class="field"><label>Pasar</label><input placeholder="Nama pasar"></div>
+        <div class="field"><label>Tanggal</label><input type="date" value="2026-04-30"></div>
+        <div class="field"><label>Harga Sumber A</label><input placeholder="14000" type="number"></div>
+        <div class="field"><label>Harga Sumber B</label><input placeholder="14500" type="number"></div>
+        <div class="field"><label>Satuan</label><select><option>Rp/kg</option><option>Rp/liter</option><option>Rp/butir</option><option>Rp/ikat</option></select></div>
+        <div class="field"><label>Sumber Data</label><select><option>Survei Lapangan</option><option>Input Operator</option><option>Import Excel</option></select></div>
+        <div class="field fullw"><label>Catatan</label><textarea placeholder="Tambahkan catatan jika diperlukan..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn" id="cancelModal">Batal</button><button class="btn primary" id="saveBtn">Simpan Data</button></div>
+  </div>
+</div>
+<div class="toast" id="toast">Data berhasil diproses.</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+const modal=$('#modal'), toast=$('#toast');
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
+function openModal(title='Tambah Data Harga'){ const m=$('#modal'); if(m) m.dataset.mode = title.startsWith('Detail') ? 'detail' : 'add'; $('#modalTitle').textContent=title;modal.classList.add('show') }
+function closeModal(){modal.classList.remove('show')}
+$('#addBtn').onclick=()=>{ const m=$('#modal'); m.dataset.mode='add'; openModal('Tambah Data Harga'); };
+$('#closeModal').onclick=closeModal; $('#cancelModal').onclick=closeModal;
+modal.onclick=e=>{if(e.target===modal)closeModal()};
+$('#saveBtn').onclick = async () => {
+  try {
+    const modal = document.querySelector('#modal');
+    const fields = modal.querySelectorAll('input, select, textarea');
+
+    // Ambil nilai dari form tambah data sesuai urutan field pada modal.
+    // Saat modal detail dibuka oleh API, handler ini akan diganti.
+    if (modal.dataset.mode === 'detail') return;
+
+    const values = [...fields].map(el => el.value);
+    const komoditas = values[0] || "KOM001";
+    const wilayah = values[1] || "WIL001";
+    const pasar = values[2] || "";
+    const tanggal = values[3] || new Date().toISOString().slice(0,10);
+    const hargaA = Number(values[4] || 0);
+    const hargaB = Number(values[5] || 0);
+    const satuan = values[6] || "kg";
+    const sumber = values[7] || "Survei Lapangan";
+
+    const sourceMap = {
+      "Survei Lapangan": "SRC001",
+      "Input Operator": "SRC002",
+      "Import Excel": "SRC003"
+    };
+
+    const result = await saveHargaToSheets({
+      tanggal: tanggal,
+      komoditas_id: komoditas,
+      wilayah_id: wilayah,
+      pasar_id: pasar,
+      sumber_id: sourceMap[sumber] || "SRC001",
+      harga: hargaA,
+      satuan: satuan,
+      volume_sample: 1,
+      petugas_id: "USR001",
+      status_data: "Valid",
+      catatan: hargaB ? "Harga pembanding: " + hargaB : ""
+    });
+
+    closeModal();
+    showToast("Data berhasil disimpan ke Google Sheets.");
+    await loadDashboardFromSheets();
+    await loadHargaFromSheets();
+  } catch (error) {
+    showToast("Gagal menyimpan: " + error.message);
+  }
+};
+
+$$('.detail').forEach(btn=>btn.onclick=()=>openModal('Detail Rekonsiliasi — '+btn.dataset.row));
+
+$('#resetBtn').onclick=()=>{ $('#search').value='';$('#filterStatus').value='';$('#filterRegion').value='';filterRows();showToast('Filter telah direset.');};
+$('#applyBtn').onclick=()=>{filterRows();showToast('Filter berhasil diterapkan.');};
+$('#search').addEventListener('input',filterRows); $('#filterStatus').addEventListener('change',filterRows); $('#filterRegion').addEventListener('change',filterRows);
+
+function filterRows(){
+ const q=$('#search').value.toLowerCase(), st=$('#filterStatus').value, rg=$('#filterRegion').value;
+ let visible=0;
+ $$('#priceTable tbody tr').forEach(tr=>{
+   const txt=tr.textContent.toLowerCase(), status=tr.querySelector('.status')?.textContent.trim()||'', region=tr.cells[2]?.textContent.trim()||'';
+   const ok=(!q||txt.includes(q))&&(!st||status===st)&&(!rg||region===rg);
+   tr.style.display=ok?'':'none';if(ok)visible++;
+ });
+ $('#rowInfo').textContent=`Menampilkan ${visible} data hasil filter`;
+}
+
+$$('.page').forEach(p=>p.onclick=()=>{$$('.page').forEach(x=>x.classList.remove('active'));p.classList.add('active');showToast('Halaman '+p.textContent+' dipilih.');});
+$$('.nav-item').forEach(item=>item.addEventListener('click',e=>{
+ $$('.nav-item').forEach(x=>x.classList.remove('active'));item.classList.add('active');
+}));
+$('#menuBtn').onclick=()=>document.body.classList.toggle('compact');
+
+$('#excelBtn').onclick=()=>{
+ const rows=[...document.querySelectorAll('#priceTable tr')].map(tr=>[...tr.cells].map(td=>td.innerText.replace(/\n/g,' ')));
+ const csv=rows.map(r=>r.map(v=>`"${v.replace(/"/g,'""')}"`).join(',')).join('\n');
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);a.download='rekonsiliasi-statistik-harga.csv';a.click();URL.revokeObjectURL(a.href);showToast('File CSV berhasil diekspor.');
+};
+$('#pdfBtn').onclick=()=>{showToast('Gunakan Ctrl+P untuk mencetak / menyimpan sebagai PDF.');setTimeout(()=>window.print(),500)};
+
+$('#trendRange').onchange=e=>{
+ const svg=$('#trendChart');
+ svg.style.opacity='.35';setTimeout(()=>{svg.style.opacity='1';showToast('Periode grafik: '+e.target.value)},250);
+};
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+</script>
+
+<script>
+/* =========================================================
+   KONEKSI GOOGLE APPS SCRIPT + GOOGLE SHEETS
+   =========================================================
+   Isi API_URL dengan URL Web App dari Apps Script.
+   Contoh: https://script.google.com/macros/s/XXXXXXXX/exec
+*/
+const APP_CONFIG = {
+  API_URL: "PASTE_YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE",
+  API_KEY: ""
+};
+
+const CURRENT_USER = "USR001";
+let MASTER = {KOMODITAS:[], WILAYAH:[], PASAR:[], SUMBER_DATA:[], USERS:[]};
+let LAST_REK_TOTAL = 0;
+
+function apiReady(){
+  return APP_CONFIG.API_URL && !APP_CONFIG.API_URL.includes("PASTE_YOUR");
+}
+
+function apiErrorMessage(err){
+  return err && err.message ? err.message : String(err || "Terjadi kesalahan.");
+}
+
+async function apiGet(action, params={}){
+  if(!apiReady()) throw new Error("URL Web App Apps Script belum diisi pada APP_CONFIG.API_URL.");
+  const url = new URL(APP_CONFIG.API_URL);
+  url.searchParams.set("action", action);
+  if(APP_CONFIG.API_KEY) url.searchParams.set("api_key", APP_CONFIG.API_KEY);
+  Object.entries(params).forEach(([k,v])=>{
+    if(v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
+  });
+  const res = await fetch(url.toString(), {method:"GET", redirect:"follow", cache:"no-store"});
+  const text = await res.text();
+  let result;
+  try { result = JSON.parse(text); }
+  catch(e){ throw new Error("Respons Apps Script bukan JSON. Pastikan deployment Web App sudah benar dan dapat diakses."); }
+  if(!result.success) throw new Error(result.error || "Request GET gagal.");
+  return result;
+}
+
+async function apiPost(payload){
+  if(!apiReady()) throw new Error("URL Web App Apps Script belum diisi pada APP_CONFIG.API_URL.");
+  const body = Object.assign({}, payload);
+  if(APP_CONFIG.API_KEY) body.api_key = APP_CONFIG.API_KEY;
+  const res = await fetch(APP_CONFIG.API_URL, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(body),
+    redirect:"follow"
+  });
+  const text = await res.text();
+  let result;
+  try { result = JSON.parse(text); }
+  catch(e){ throw new Error("Respons Apps Script bukan JSON. Pastikan Web App dapat diakses."); }
+  if(!result.success) throw new Error(result.error || "Request POST gagal.");
+  return result;
+}
+
+function safeName(map, id){
+  const x = (map||[]).find(r => String(r[Object.keys(r)[0]]) === String(id));
+  return x || null;
+}
+function masterFind(table, id){
+  const rows = MASTER[table] || [];
+  const key = table === "KOMODITAS" ? "id_komoditas" :
+              table === "WILAYAH" ? "id_wilayah" :
+              table === "PASAR" ? "id_pasar" :
+              table === "SUMBER_DATA" ? "id_sumber" : "id_user";
+  return rows.find(r => String(r[key]) === String(id));
+}
+function masterName(table, id){
+  const r = masterFind(table,id);
+  if(!r) return id || "-";
+  return r.nama_komoditas || r.nama_wilayah || r.nama_pasar || r.nama_sumber || r.nama || id;
+}
+
+async function loadMasterData(){
+  const result = await apiGet("master");
+  MASTER = result.data || MASTER;
+  populateMasterForm();
+  populateRegionFilter();
+  return MASTER;
+}
+
+function optionHtml(rows, idField, nameField, placeholder){
+  let html = `<option value="">${escapeHtml(placeholder)}</option>`;
+  (rows||[]).forEach(r=>{
+    html += `<option value="${escapeAttr(r[idField]||"")}">${escapeHtml(r[nameField] || r[idField] || "-")}</option>`;
+  });
+  return html;
+}
+
+function buildAddForm(){
+  const body = document.querySelector("#modal .modal-body");
+  if(!body) return;
+  body.innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Komoditas</label><select id="fKomoditas" required></select></div>
+      <div class="field"><label>Wilayah</label><select id="fWilayah" required></select></div>
+      <div class="field"><label>Pasar</label><select id="fPasar" required></select></div>
+      <div class="field"><label>Tanggal</label><input id="fTanggal" type="date" required></div>
+      <div class="field"><label>Harga Sumber A</label><input id="fHargaA" type="number" min="0" step="1" placeholder="14000" required></div>
+      <div class="field"><label>Harga Sumber B</label><input id="fHargaB" type="number" min="0" step="1" placeholder="14500" required></div>
+      <div class="field"><label>Sumber Data A</label><select id="fSumberA" required></select></div>
+      <div class="field"><label>Sumber Data B</label><select id="fSumberB" required></select></div>
+      <div class="field"><label>Satuan</label><input id="fSatuan" value="kg" placeholder="kg" required></div>
+      <div class="field"><label>Harga Final</label><input id="fHargaFinal" type="number" min="0" step="1" placeholder="Otomatis = Sumber A"></div>
+      <div class="field fullw"><label>Catatan</label><textarea id="fCatatan" placeholder="Catatan rekonsiliasi..."></textarea></div>
+    </div>`;
+  populateMasterForm();
+  const today = new Date();
+  document.querySelector("#fTanggal").value = today.toISOString().slice(0,10);
+}
+
+function populateMasterForm(){
+  const kom = document.querySelector("#fKomoditas");
+  const wil = document.querySelector("#fWilayah");
+  const pas = document.querySelector("#fPasar");
+  const sa = document.querySelector("#fSumberA");
+  const sb = document.querySelector("#fSumberB");
+  if(kom) kom.innerHTML = optionHtml(MASTER.KOMODITAS,"id_komoditas","nama_komoditas","Pilih komoditas");
+  if(wil) wil.innerHTML = optionHtml(MASTER.WILAYAH,"id_wilayah","nama_wilayah","Pilih wilayah");
+  if(pas) pas.innerHTML = optionHtml(MASTER.PASAR,"id_pasar","nama_pasar","Pilih pasar");
+  if(sa) sa.innerHTML = optionHtml(MASTER.SUMBER_DATA,"id_sumber","nama_sumber","Pilih sumber A");
+  if(sb) sb.innerHTML = optionHtml(MASTER.SUMBER_DATA,"id_sumber","nama_sumber","Pilih sumber B");
+}
+
+function populateRegionFilter(){
+  const el = document.querySelector("#filterRegion");
+  if(!el) return;
+  const current = el.value;
+  const rows = MASTER.WILAYAH || [];
+  el.innerHTML = `<option value="">Semua Wilayah</option>` + rows.map(r=>`<option value="${escapeAttr(r.id_wilayah)}">${escapeHtml(r.nama_wilayah||r.id_wilayah)}</option>`).join("");
+  el.value = current;
+}
+
+async function saveNewData(){
+  const get = id => document.querySelector(id)?.value || "";
+  const komoditas = get("#fKomoditas"), wilayah=get("#fWilayah"), pasar=get("#fPasar");
+  const tanggal=get("#fTanggal"), hargaA=Number(get("#fHargaA")), hargaB=Number(get("#fHargaB"));
+  const sumberA=get("#fSumberA"), sumberB=get("#fSumberB"), satuan=get("#fSatuan");
+  const finalRaw=get("#fHargaFinal"), catatan=get("#fCatatan");
+  if(!komoditas||!wilayah||!pasar||!tanggal||!sumberA||!sumberB||!satuan) throw new Error("Lengkapi seluruh field wajib.");
+  if(!Number.isFinite(hargaA)||!Number.isFinite(hargaB)||hargaA<0||hargaB<0) throw new Error("Harga Sumber A/B harus berupa angka yang valid.");
+
+  // Simpan dua observasi harga ke HARGA, masing-masing untuk satu sumber.
+  await apiPost({action:"create",table:"HARGA",data:{tanggal,id_komoditas:komoditas,id_wilayah:wilayah,id_pasar:pasar,id_sumber:sumberA,harga:hargaA,satuan,status:"Aktif",keterangan:catatan,created_by:CURRENT_USER}});
+  await apiPost({action:"create",table:"HARGA",data:{tanggal,id_komoditas:komoditas,id_wilayah:wilayah,id_pasar:pasar,id_sumber:sumberB,harga:hargaB,satuan,status:"Aktif",keterangan:catatan,created_by:CURRENT_USER}});
+
+  // Jalankan rekonsiliasi otomatis; threshold dibaca dari sheet KOMODITAS oleh Code.gs.
+  await apiPost({action:"reconcile",data:{tanggal,id_komoditas:komoditas,id_wilayah:wilayah,id_pasar:pasar,id_sumber_a:sumberA,id_sumber_b:sumberB,harga_a:hargaA,harga_b:hargaB,harga_final:finalRaw===""?hargaA:Number(finalRaw),catatan,verified_by:""}});
+}
+
+async function loadDashboardFromSheets(){
+  const result = await apiGet("dashboard");
+  const d = result.data || {}, k = d.kpi || {};
+  // KPI pada desain lama: jumlah komoditas, wilayah, rekonsiliasi, belum, bermasalah.
+  setKpiNumber(0, (MASTER.KOMODITAS||[]).length);
+  setKpiNumber(1, (MASTER.WILAYAH||[]).length);
+  setKpiNumber(2, k.total_rekonsiliasi || 0);
+  setKpiNumber(3, Math.max((k.total_rekonsiliasi||0)-(k.terverifikasi||0),0));
+  setKpiNumber(4, k.anomali || 0);
+  renderReconciliationStatus(d.status || {});
+  renderAnomalySummary(k.anomali_open || 0);
+}
+
+function renderReconciliationStatus(status){
+  const list=document.querySelector(".status-list");
+  const donut=document.querySelector(".donut");
+  const center=document.querySelector(".donut-center b");
+  if(!list) return;
+  const names=["Disetujui","Diverifikasi","Belum Dicek","Anomali","Ditolak"];
+  const colors={"Disetujui":"#16a673","Diverifikasi":"#1769e0","Belum Dicek":"#f3a51b","Anomali":"#e55353","Ditolak":"#8c5a65"};
+  const vals=names.map(n=>Number(status[n]||0));
+  const total=vals.reduce((a,b)=>a+b,0);
+  if(center) center.textContent=total.toLocaleString("id-ID");
+  let cursor=0, stops=[];
+  names.forEach((n,i)=>{ const pct=total?vals[i]/total*100:0; stops.push(`${colors[n]} ${cursor}% ${cursor+pct}%`); cursor+=pct; });
+  if(donut) donut.style.background=`conic-gradient(${stops.join(",")})`;
+  list.innerHTML=names.map(n=>{
+    const v=Number(status[n]||0), pct=total?Math.round(v/total*100):0;
+    return `<div><span style="background:${colors[n]}"></span>${escapeHtml(n)}<br><b>${v.toLocaleString("id-ID")} (${pct}%)</b></div>`;
+  }).join("");
+}
+
+function renderAnomalySummary(openCount){
+  const box=document.querySelector("#anomali");
+  if(!box) return;
+  const first=box.querySelectorAll(".alert")[0];
+  if(first){ const b=first.querySelector("b"); if(b) b.textContent=Number(openCount||0).toLocaleString("id-ID"); }
+}
+
+async function loadHargaFromSheets(params={}){
+  const result=await apiGet("list",Object.assign({table:"REKONSILIASI",limit:100},params));
+  const payload=result.data||{};
+  LAST_REK_TOTAL=Number(payload.total||0);
+  renderReconciliationTable(payload.rows||[]);
+  return result;
+}
+
+function renderReconciliationTable(rows){
+  const tbody=document.querySelector("#priceTable tbody");
+  const info=document.querySelector("#rowInfo");
+  if(!tbody) return;
+  tbody.innerHTML="";
+  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:25px;color:#718096">Tidak ada data rekonsiliasi.</td></tr>`; if(info) info.textContent="Tidak ada data"; return; }
+  rows.forEach((r,i)=>{
+    const status=r.status_rekonsiliasi||"Belum Dicek";
+    const kom=masterName("KOMODITAS",r.id_komoditas), wil=masterName("WILAYAH",r.id_wilayah), pas=masterName("PASAR",r.id_pasar);
+    const sa=masterName("SUMBER_DATA",r.id_sumber_a), sb=masterName("SUMBER_DATA",r.id_sumber_b);
+    tbody.insertAdjacentHTML("beforeend",`<tr>
+      <td>${i+1}</td><td>${escapeHtml(kom)}</td><td>${escapeHtml(wil)}</td><td>${escapeHtml(pas)}</td>
+      <td>${escapeHtml(sa)}<br>${formatRupiah(r.harga_a)}</td><td>${escapeHtml(sb)}<br>${formatRupiah(r.harga_b)}</td>
+      <td class="${Number(r.selisih_nominal)<0?"down":""}">${formatRupiah(r.selisih_nominal)}</td>
+      <td class="${Number(r.selisih_persen)<0?"down":""}">${formatNumber(r.selisih_persen)}%</td>
+      <td><span class="status ${statusClass(status)}">${escapeHtml(status)}</span></td>
+      <td><button class="detail" data-row="${escapeAttr(r.id_rekonsiliasi)}">Detail</button></td>
+    </tr>`);
+  });
+  if(info) info.textContent=`Menampilkan ${rows.length} dari ${LAST_REK_TOTAL.toLocaleString("id-ID")} data`;
+  tbody.querySelectorAll(".detail").forEach(btn=>btn.onclick=async()=>{
+    try{ const result=await apiGet("get",{table:"REKONSILIASI",id:btn.dataset.row}); openApiDetailModal(result.data); }
+    catch(e){showToast(apiErrorMessage(e));}
+  });
+}
+
+function statusClass(status){return ({"Disetujui":"approved","Diverifikasi":"verified","Belum Dicek":"unchecked","Anomali":"anomaly","Ditolak":"rejected"})[status]||"unchecked";}
+function formatRupiah(v){return "Rp "+Number(v||0).toLocaleString("id-ID");}
+function formatNumber(v){return Number(v||0).toLocaleString("id-ID",{maximumFractionDigits:2});}
+function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
+function escapeAttr(v){return escapeHtml(v).replaceAll("`","&#096;");}
+function setKpiNumber(index,value){const cards=document.querySelectorAll(".kpi .num");if(cards[index])cards[index].textContent=Number(value||0).toLocaleString("id-ID");}
+
+function openApiDetailModal(data){
+  const modal=document.querySelector("#modal");
+  if(!modal||!data) return;
+  modal.dataset.mode="detail";
+  document.querySelector("#modalTitle").textContent="Detail Rekonsiliasi — "+(data.id_rekonsiliasi||"");
+  const body=document.querySelector("#modal .modal-body");
+  body.innerHTML=`<div class="form-grid">
+    <div class="field"><label>ID Rekonsiliasi</label><input value="${escapeAttr(data.id_rekonsiliasi||"")}" disabled></div>
+    <div class="field"><label>Tanggal</label><input value="${escapeAttr(data.tanggal||"")}" disabled></div>
+    <div class="field"><label>Komoditas</label><input value="${escapeAttr(masterName("KOMODITAS",data.id_komoditas))}" disabled></div>
+    <div class="field"><label>Wilayah</label><input value="${escapeAttr(masterName("WILAYAH",data.id_wilayah))}" disabled></div>
+    <div class="field"><label>Pasar</label><input value="${escapeAttr(masterName("PASAR",data.id_pasar))}" disabled></div>
+    <div class="field"><label>Selisih</label><input value="${escapeAttr(formatRupiah(data.selisih_nominal)+" / "+formatNumber(data.selisih_persen)+"%")}" disabled></div>
+    <div class="field"><label>Status</label><select id="apiStatus">${["Belum Dicek","Diverifikasi","Disetujui","Anomali","Ditolak"].map(s=>`<option value="${s}" ${s===data.status_rekonsiliasi?"selected":""}>${s}</option>`).join("")}</select></div>
+    <div class="field"><label>Harga Final</label><input id="apiFinal" type="number" value="${escapeAttr(data.harga_final??"")}"></div>
+    <div class="field fullw"><label>Catatan</label><textarea id="apiNote">${escapeHtml(data.catatan||"")}</textarea></div>
+  </div>`;
+  const save=document.querySelector("#saveBtn");
+  save.textContent="Simpan Verifikasi";
+  save.onclick=async()=>{
+    try{
+      save.disabled=true;
+      await apiPost({action:"verify",id:data.id_rekonsiliasi,status:document.querySelector("#apiStatus").value,catatan:document.querySelector("#apiNote").value,verified_by:CURRENT_USER});
+      const finalVal=document.querySelector("#apiFinal").value;
+      if(finalVal!=="") await apiPost({action:"update",table:"REKONSILIASI",id:data.id_rekonsiliasi,data:{harga_final:Number(finalVal),catatan:document.querySelector("#apiNote").value}});
+      closeModal(); showToast("Verifikasi berhasil disimpan."); await refreshAll();
+    }catch(e){showToast(apiErrorMessage(e));}finally{save.disabled=false;save.textContent="Simpan Verifikasi";}
+  };
+  document.querySelector("#modal").classList.add("show");
+}
+
+async function refreshAll(){
+  await loadMasterData();
+  await loadDashboardFromSheets();
+  await loadHargaFromSheets();
+}
+
+// Override handler UI lama agar seluruh form benar-benar menggunakan schema Code.gs.
+(function wireConnectedUI(){
+  const add=document.querySelector("#addBtn");
+  if(add) add.onclick=async()=>{
+    try{
+      const modal=document.querySelector("#modal");
+      modal.dataset.mode="add";
+      document.querySelector("#modalTitle").textContent="Tambah Data Rekonsiliasi Harga";
+      buildAddForm();
+      const save=document.querySelector("#saveBtn");
+      save.textContent="Simpan & Rekonsiliasi";
+      save.onclick=async()=>{
+        try{save.disabled=true;await saveNewData();closeModal();showToast("Data harga dan rekonsiliasi berhasil disimpan.");await refreshAll();}
+        catch(e){showToast("Gagal menyimpan: "+apiErrorMessage(e));}
+        finally{save.disabled=false;save.textContent="Simpan & Rekonsiliasi";}
+      };
+      document.querySelector("#modal").classList.add("show");
+    }catch(e){showToast(apiErrorMessage(e));}
+  };
+
+  const reset=document.querySelector("#resetBtn");
+  if(reset) reset.onclick=()=>{document.querySelector("#search").value="";document.querySelector("#filterStatus").value="";document.querySelector("#filterRegion").value="";applyTableFilter();};
+  const apply=document.querySelector("#applyBtn");
+  if(apply) apply.onclick=applyTableFilter;
+  ["#search","#filterStatus","#filterRegion"].forEach(sel=>{const el=document.querySelector(sel);if(el)el.addEventListener("input",applyTableFilter);el?.addEventListener("change",applyTableFilter);});
+})();
+
+function applyTableFilter(){
+  const q=(document.querySelector("#search")?.value||"").toLowerCase();
+  const st=document.querySelector("#filterStatus")?.value||"";
+  const rg=document.querySelector("#filterRegion")?.value||"";
+  let visible=0;
+  document.querySelectorAll("#priceTable tbody tr").forEach(tr=>{
+    if(!tr.cells.length) return;
+    const text=tr.textContent.toLowerCase(), status=tr.querySelector(".status")?.textContent.trim()||"", region=tr.cells[2]?.textContent.trim()||"";
+    const ok=(!q||text.includes(q))&&(!st||status===st)&&(!rg||region===rg);
+    tr.style.display=ok?"":"none"; if(ok)visible++;
+  });
+  const info=document.querySelector("#rowInfo"); if(info) info.textContent=`Menampilkan ${visible} data hasil filter`;
+}
+
+window.addEventListener("load",async()=>{
+  if(!apiReady()){
+    showToast("Isi APP_CONFIG.API_URL dengan URL Web App Apps Script terlebih dahulu.");
+    return;
+  }
+  try{
+    await apiGet("health");
+    await refreshAll();
+    showToast("Terhubung ke Google Sheets.");
+  }catch(e){
+    console.error(e);
+    showToast("Koneksi gagal: "+apiErrorMessage(e));
+  }
+});
+</script>
+
+</body>
+</html>
